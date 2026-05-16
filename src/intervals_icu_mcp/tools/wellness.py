@@ -26,7 +26,7 @@ async def get_wellness_data(
         JSON string with wellness data
     """
     assert ctx is not None
-    config: ICUConfig = ctx.get_state("config")
+    config: ICUConfig = ICUConfig(**(await ctx.get_state("config")))
 
     try:
         # Calculate date range
@@ -201,7 +201,7 @@ async def get_wellness_for_date(
         JSON string with wellness data for the date
     """
     assert ctx is not None
-    config: ICUConfig = ctx.get_state("config")
+    config: ICUConfig = ICUConfig(**(await ctx.get_state("config")))
 
     # Validate date format
     try:
@@ -380,7 +380,7 @@ async def update_wellness(
         JSON string with updated wellness data
     """
     assert ctx is not None
-    config: ICUConfig = ctx.get_state("config")
+    config: ICUConfig = ICUConfig(**(await ctx.get_state("config")))
 
     # Validate date format
     try:
@@ -468,3 +468,5 @@ async def update_wellness(
         return ResponseBuilder.build_error_response(
             f"Unexpected error: {str(e)}", error_type="internal_error"
         )
+
+

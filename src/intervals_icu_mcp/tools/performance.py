@@ -35,7 +35,7 @@ async def get_power_curves(
         JSON string with power curve data
     """
     assert ctx is not None
-    config: ICUConfig = ctx.get_state("config")
+    config: ICUConfig = ICUConfig(**(await ctx.get_state("config")))
 
     try:
         # Determine date range
@@ -196,3 +196,5 @@ async def get_power_curves(
         return ResponseBuilder.build_error_response(
             f"Unexpected error: {str(e)}", error_type="internal_error"
         )
+
+

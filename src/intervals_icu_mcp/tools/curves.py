@@ -35,7 +35,7 @@ async def get_hr_curves(
         JSON string with HR curve data
     """
     assert ctx is not None
-    config: ICUConfig = ctx.get_state("config")
+    config: ICUConfig = ICUConfig(**(await ctx.get_state("config")))
 
     try:
         # Determine date range
@@ -208,7 +208,7 @@ async def get_pace_curves(
         JSON string with pace curve data
     """
     assert ctx is not None
-    config: ICUConfig = ctx.get_state("config")
+    config: ICUConfig = ICUConfig(**(await ctx.get_state("config")))
 
     try:
         # Determine date range
@@ -339,3 +339,5 @@ async def get_pace_curves(
         return ResponseBuilder.build_error_response(
             f"Unexpected error: {str(e)}", error_type="internal_error"
         )
+
+

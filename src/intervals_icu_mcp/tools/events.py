@@ -28,7 +28,7 @@ async def get_calendar_events(
         JSON string with calendar events
     """
     assert ctx is not None
-    config: ICUConfig = ctx.get_state("config")
+    config: ICUConfig = ICUConfig(**(await ctx.get_state("config")))
 
     try:
         # Calculate date range
@@ -160,7 +160,7 @@ async def get_upcoming_workouts(
         JSON string with upcoming workouts
     """
     assert ctx is not None
-    config: ICUConfig = ctx.get_state("config")
+    config: ICUConfig = ICUConfig(**(await ctx.get_state("config")))
 
     try:
         # Look ahead 30 days to find workouts
@@ -266,7 +266,7 @@ async def get_event(
         JSON string with event details
     """
     assert ctx is not None
-    config: ICUConfig = ctx.get_state("config")
+    config: ICUConfig = ICUConfig(**(await ctx.get_state("config")))
 
     try:
         async with ICUClient(config) as client:
@@ -330,3 +330,5 @@ async def get_event(
         return ResponseBuilder.build_error_response(
             f"Unexpected error: {str(e)}", error_type="internal_error"
         )
+
+

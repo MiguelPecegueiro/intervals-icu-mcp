@@ -316,3 +316,5 @@ async def delete_sport_settings(
         return ResponseBuilder.build_error_response(e.message, error_type="api_error")
     except Exception as e:
         return ResponseBuilder.build_error_response(str(e), error_type="unexpected_error")
+
+
