@@ -1,6 +1,67 @@
 > **Fork of [eddmann/intervals-icu-mcp](https://github.com/eddmann/intervals-icu-mcp)**  
 > Patched for async compatibility with FastMCP 3.3.1 — `get_state`/`set_state` now properly awaited, `.env` path resolution fixed for Claude Desktop on Windows.
 
+## Windows Setup (Claude Desktop)
+
+This fork fixes async compatibility issues with FastMCP 3.3.1 on Windows. Follow these steps:
+
+### Prerequisites
+- Python 3.12
+- Git
+
+### Installation
+
+**1. Clone and set up the environment**
+```bash
+git clone https://github.com/MiguelPecegueiro/intervals-icu-mcp.git
+cd intervals-icu-mcp
+python -m venv .venv
+.venv\Scripts\activate
+pip install -e .
+```
+
+**2. Create your `.env` file**
+
+Copy `.env.example` to `.env` and fill in your credentials:
+INTERVALS_ICU_API_KEY=your_api_key_here
+INTERVALS_ICU_ATHLETE_ID=your_athlete_id_here
+
+- **API key:** Intervals.icu → Settings → Developer Settings → Generate key
+- **Athlete ID:** visible in your Intervals.icu URL: `intervals.icu/athlete/i12345` → ID is `i12345`
+
+**3. Create `start_mcp.bat`** in the project root:
+```bat
+@echo off
+set PYTHONPATH=src
+set INTERVALS_ICU_ATHLETE_ID=your_athlete_id_here
+set INTERVALS_ICU_API_KEY=your_api_key_here
+C:\path\to\intervals-icu-mcp\.venv\Scripts\python.exe -c "from intervals_icu_mcp.server import main; main()"
+```
+
+**4. Configure Claude Desktop**
+
+Add to `C:\Users\<USERNAME>\AppData\Roaming\Claude\claude_desktop_config.json`:
+```json
+{
+  "mcpServers": {
+    "intervals-icu": {
+      "command": "cmd.exe",
+      "args": [
+        "/c",
+        "C:\\path\\to\\intervals-icu-mcp\\start_mcp.bat"
+      ],
+      "cwd": "C:\\path\\to\\intervals-icu-mcp"
+    }
+  }
+}
+```
+
+Restart Claude Desktop — intervals-icu should appear as **running** in Settings → Developer.
+
+### Notes
+- Activities synced via Strava are not accessible due to Strava's API restrictions. Connect your device (Garmin, Wahoo, etc.) directly to Intervals.icu instead.
+- The MCP only works on Claude Desktop, not claude.ai in the browser.
+
 # Intervals.icu MCP Server
 
 ![Intervals.icu MCP Server](docs/heading.png)
