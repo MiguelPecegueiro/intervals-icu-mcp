@@ -358,20 +358,20 @@ class ActivityStreams(BaseModel):
 # ==================== Best Efforts Models ====================
 
 
-class BestEffort(BaseModel):
-    """Best effort for a specific duration."""
+class Effort(BaseModel):
+    """Single best effort entry from the API."""
 
-    name: str | None = None
-    elapsed_time: int | None = None  # Duration in seconds
-    moving_time: int | None = None
     start_index: int | None = None
     end_index: int | None = None
+    average: float | None = None
+    duration: int | None = None
     distance: float | None = None
-    average_watts: int | None = None
-    normalized_power: int | None = None
-    average_heartrate: int | None = None
-    average_cadence: float | None = None
-    average_speed: float | None = None
+
+
+class BestEfforts(BaseModel):
+    """Response from the best-efforts endpoint."""
+
+    efforts: list[Effort] = Field(default_factory=list)
 
 
 # ==================== Gear Models ====================

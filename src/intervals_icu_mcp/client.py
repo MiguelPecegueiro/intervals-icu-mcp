@@ -12,7 +12,7 @@ from .models import (
     ActivityStreams,
     ActivitySummary,
     Athlete,
-    BestEffort,
+    BestEfforts,
     Event,
     Folder,
     Gear,
@@ -26,6 +26,13 @@ from .models import (
     Wellness,
     Workout,
 )
+
+
+def _histogram_from_json(data: Any) -> Histogram:
+    """Parse histogram API response (list of bins or wrapped object)."""
+    if isinstance(data, list):
+        return Histogram(bins=data)
+    return Histogram(**data)
 
 
 class ICUAPIError(Exception):
@@ -358,7 +365,7 @@ class ICUClient:
             Histogram with power distribution bins
         """
         response = await self._request("GET", f"/activity/{activity_id}/power-histogram")
-        return Histogram(**response.json())
+        return _histogram_from_json(response.json())
 
     async def get_hr_histogram(
         self,
@@ -373,7 +380,7 @@ class ICUClient:
             Histogram with HR distribution bins
         """
         response = await self._request("GET", f"/activity/{activity_id}/hr-histogram")
-        return Histogram(**response.json())
+        return _histogram_from_json(response.json())
 
     async def get_pace_histogram(
         self,
@@ -388,7 +395,7 @@ class ICUClient:
             Histogram with pace distribution bins
         """
         response = await self._request("GET", f"/activity/{activity_id}/pace-histogram")
-        return Histogram(**response.json())
+        return _histogram_from_json(response.json())
 
     async def get_gap_histogram(
         self,
@@ -403,7 +410,7 @@ class ICUClient:
             Histogram with GAP distribution bins
         """
         response = await self._request("GET", f"/activity/{activity_id}/gap-histogram")
-        return Histogram(**response.json())
+        return _histogram_from_json(response.json())
 
     # ==================== Wellness Endpoints ====================
 
@@ -569,6 +576,7 @@ class ICUClient:
         athlete_id: str | None = None,
         oldest: str | None = None,
         newest: str | None = None,
+        activity_type: str = "Ride",
     ) -> PowerCurve:
         """Get power curve data (best efforts for various durations).
 
@@ -576,12 +584,13 @@ class ICUClient:
             athlete_id: Athlete ID (uses config default if not provided)
             oldest: Oldest date to include (ISO-8601 format)
             newest: Newest date to include (ISO-8601 format)
+            activity_type: Sport type (e.g. "Ride", "Run", "Swim")
 
         Returns:
             PowerCurve with best efforts data
         """
         athlete_id = athlete_id or self.config.intervals_icu_athlete_id
-        params = {}
+        params: dict[str, str] = {"type": activity_type}
 
         if oldest:
             params["oldest"] = oldest
@@ -596,6 +605,7 @@ class ICUClient:
         athlete_id: str | None = None,
         oldest: str | None = None,
         newest: str | None = None,
+        activity_type: str = "Ride",
     ) -> HRCurve:
         """Get heart rate curve data (best efforts for various durations).
 
@@ -603,12 +613,13 @@ class ICUClient:
             athlete_id: Athlete ID (uses config default if not provided)
             oldest: Oldest date to include (ISO-8601 format)
             newest: Newest date to include (ISO-8601 format)
+            activity_type: Sport type (e.g. "Ride", "Run", "Swim")
 
         Returns:
             HRCurve with best efforts data
         """
         athlete_id = athlete_id or self.config.intervals_icu_athlete_id
-        params = {}
+        params: dict[str, str] = {"type": activity_type}
 
         if oldest:
             params["oldest"] = oldest
@@ -624,6 +635,7 @@ class ICUClient:
         oldest: str | None = None,
         newest: str | None = None,
         use_gap: bool = False,
+        activity_type: str = "Run",
     ) -> PaceCurve:
         """Get pace curve data (best efforts for various durations).
 
@@ -632,12 +644,13 @@ class ICUClient:
             oldest: Oldest date to include (ISO-8601 format)
             newest: Newest date to include (ISO-8601 format)
             use_gap: Use Grade Adjusted Pace for running (default False)
+            activity_type: Sport type (e.g. "Run", "Swim", "TrailRun")
 
         Returns:
             PaceCurve with best efforts data
         """
         athlete_id = athlete_id or self.config.intervals_icu_athlete_id
-        params = {}
+        params: dict[str, str] = {"type": activity_type}
 
         if oldest:
             params["oldest"] = oldest
@@ -711,18 +724,33 @@ class ICUClient:
     async def get_best_efforts(
         self,
         activity_id: str,
-    ) -> list[BestEffort]:
+        stream: str,
+        duration: int | None = None,
+        distance: float | None = None,
+        count: int = 8,
+    ) -> BestEfforts:
         """Get best efforts for an activity.
 
         Args:
             activity_id: Activity ID
+            stream: Stream to search (e.g. "watts", "heartrate", "pace")
+            duration: Duration of each effort in seconds
+            distance: Distance of each effort in meters
+            count: Number of efforts to return (default 8)
 
         Returns:
-            List of BestEffort objects
+            BestEfforts with matching efforts
         """
-        response = await self._request("GET", f"/activity/{activity_id}/best-efforts")
-        adapter = TypeAdapter(list[BestEffort])
-        return adapter.validate_python(response.json())
+        params: dict[str, str | int | float] = {"stream": stream, "count": count}
+        if duration is not None:
+            params["duration"] = duration
+        if distance is not None:
+            params["distance"] = distance
+
+        response = await self._request(
+            "GET", f"/activity/{activity_id}/best-efforts", params=params
+        )
+        return BestEfforts(**response.json())
 
     async def search_intervals(
         self,

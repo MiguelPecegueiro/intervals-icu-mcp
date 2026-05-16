@@ -16,6 +16,9 @@ async def get_hr_curves(
         str | None,
         "Time period shorthand: 'week', 'month', 'year', 'all' (optional)",
     ] = None,
+    activity_type: Annotated[
+        str, "Sport type for curve data (e.g. 'Ride', 'Run', 'Swim')"
+    ] = "Ride",
     ctx: Context | None = None,
 ) -> str:
     """Get heart rate curve data showing best efforts for various durations.
@@ -30,6 +33,7 @@ async def get_hr_curves(
         days_back: Number of days to analyze (overrides time_period)
         time_period: Time period shorthand - 'week' (7 days), 'month' (30 days),
                      'year' (365 days), 'all' (all time). Default is 90 days.
+        activity_type: Sport type (e.g. "Ride", "Run", "Swim"). Default is "Ride".
 
     Returns:
         JSON string with HR curve data
@@ -71,7 +75,7 @@ async def get_hr_curves(
             period_label = "90_days"
 
         async with ICUClient(config) as client:
-            hr_curve = await client.get_hr_curves(oldest=oldest)
+            hr_curve = await client.get_hr_curves(oldest=oldest, activity_type=activity_type)
 
             if not hr_curve.data or len(hr_curve.data) == 0:
                 return ResponseBuilder.build_response(
@@ -161,6 +165,7 @@ async def get_hr_curves(
 
             result_data: dict[str, Any] = {
                 "period": period_label,
+                "activity_type": activity_type,
                 "peak_efforts": peak_efforts,
                 "summary": summary,
             }
@@ -188,6 +193,9 @@ async def get_pace_curves(
         "Time period shorthand: 'week', 'month', 'year', 'all' (optional)",
     ] = None,
     use_gap: Annotated[bool, "Use Grade Adjusted Pace (GAP) for running"] = False,
+    activity_type: Annotated[
+        str, "Sport type for curve data (e.g. 'Run', 'Swim', 'TrailRun')"
+    ] = "Run",
     ctx: Context | None = None,
 ) -> str:
     """Get pace curve data showing best efforts for various durations.
@@ -203,6 +211,7 @@ async def get_pace_curves(
         time_period: Time period shorthand - 'week' (7 days), 'month' (30 days),
                      'year' (365 days), 'all' (all time). Default is 90 days.
         use_gap: Use Grade Adjusted Pace (GAP) for running to account for hills
+        activity_type: Sport type (e.g. "Run", "Swim"). Default is "Run".
 
     Returns:
         JSON string with pace curve data
@@ -244,7 +253,9 @@ async def get_pace_curves(
             period_label = "90_days"
 
         async with ICUClient(config) as client:
-            pace_curve = await client.get_pace_curves(oldest=oldest, use_gap=use_gap)
+            pace_curve = await client.get_pace_curves(
+                oldest=oldest, use_gap=use_gap, activity_type=activity_type
+            )
 
             if not pace_curve.data or len(pace_curve.data) == 0:
                 return ResponseBuilder.build_response(
@@ -324,6 +335,7 @@ async def get_pace_curves(
 
             result_data: dict[str, Any] = {
                 "period": period_label,
+                "activity_type": activity_type,
                 "peak_efforts": peak_efforts,
                 "summary": summary,
             }

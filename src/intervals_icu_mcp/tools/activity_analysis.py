@@ -217,16 +217,25 @@ async def get_activity_intervals(
 
 async def get_best_efforts(
     activity_id: Annotated[str, "Activity ID to analyze"],
+    stream: Annotated[
+        str, "Stream to analyze (e.g. 'watts', 'heartrate', 'pace')"
+    ] = "watts",
+    duration: Annotated[int | None, "Duration of each effort in seconds"] = None,
+    distance: Annotated[float | None, "Distance of each effort in meters"] = None,
+    count: Annotated[int, "Number of efforts to return"] = 8,
     ctx: Context | None = None,
 ) -> str:
     """Get best efforts/peak performances from an activity.
 
-    Analyzes the activity to find the best performances across various durations
-    (e.g., best 5-second power, best 1-minute power, best 20-minute power).
-    Similar to Strava segments but for all durations.
+    Finds the best performances for a given stream and optional duration or distance.
+    Use stream "watts" for power, "heartrate" for HR, or "pace" for running pace.
 
     Args:
         activity_id: The unique ID of the activity
+        stream: Stream to search (watts, heartrate, pace, etc.)
+        duration: Duration of each effort in seconds
+        distance: Distance of each effort in meters
+        count: Number of efforts to return (default 8)
 
     Returns:
         JSON string with best efforts data
@@ -236,43 +245,34 @@ async def get_best_efforts(
 
     try:
         async with ICUClient(config) as client:
-            best_efforts = await client.get_best_efforts(activity_id)
+            best_efforts = await client.get_best_efforts(
+                activity_id,
+                stream=stream,
+                duration=duration,
+                distance=distance,
+                count=count,
+            )
 
-            if not best_efforts:
+            if not best_efforts.efforts:
                 return ResponseBuilder.build_response(
-                    data={"best_efforts": [], "count": 0, "activity_id": activity_id},
+                    data={
+                        "best_efforts": [],
+                        "count": 0,
+                        "activity_id": activity_id,
+                        "stream": stream,
+                    },
                     metadata={"message": "No best efforts found for this activity"},
                 )
 
             efforts_data: list[dict[str, Any]] = []
-            for effort in best_efforts:
-                effort_item: dict[str, Any] = {
-                    "name": effort.name,
-                    "elapsed_time_seconds": effort.elapsed_time,
-                }
-
-                if effort.moving_time:
-                    effort_item["moving_time_seconds"] = effort.moving_time
-                if effort.distance:
+            for effort in best_efforts.efforts:
+                effort_item: dict[str, Any] = {}
+                if effort.average is not None:
+                    effort_item["average"] = effort.average
+                if effort.duration is not None:
+                    effort_item["duration_seconds"] = effort.duration
+                if effort.distance is not None:
                     effort_item["distance_meters"] = effort.distance
-
-                # Performance metrics
-                performance: dict[str, Any] = {}
-                if effort.average_watts:
-                    performance["average_watts"] = effort.average_watts
-                if effort.normalized_power:
-                    performance["normalized_power"] = effort.normalized_power
-                if effort.average_heartrate:
-                    performance["average_heartrate"] = effort.average_heartrate
-                if effort.average_cadence:
-                    performance["average_cadence"] = effort.average_cadence
-                if effort.average_speed:
-                    performance["average_speed_meters_per_sec"] = effort.average_speed
-
-                if performance:
-                    effort_item["performance"] = performance
-
-                # Location in activity
                 if effort.start_index is not None:
                     effort_item["start_index"] = effort.start_index
                 if effort.end_index is not None:
@@ -282,6 +282,7 @@ async def get_best_efforts(
 
             result_data = {
                 "activity_id": activity_id,
+                "stream": stream,
                 "best_efforts": efforts_data,
                 "count": len(efforts_data),
             }

@@ -16,6 +16,9 @@ async def get_power_curves(
         str | None,
         "Time period shorthand: 'week', 'month', 'year', 'all' (optional)",
     ] = None,
+    activity_type: Annotated[
+        str, "Sport type for curve data (e.g. 'Ride', 'Run', 'Swim')"
+    ] = "Ride",
     ctx: Context | None = None,
 ) -> str:
     """Get power curve data showing best efforts for various durations.
@@ -30,6 +33,7 @@ async def get_power_curves(
         days_back: Number of days to analyze (overrides time_period)
         time_period: Time period shorthand - 'week' (7 days), 'month' (30 days),
                      'year' (365 days), 'all' (all time). Default is 90 days.
+        activity_type: Sport type (e.g. "Ride", "Run", "Swim"). Default is "Ride".
 
     Returns:
         JSON string with power curve data
@@ -71,7 +75,9 @@ async def get_power_curves(
             period_label = "90_days"
 
         async with ICUClient(config) as client:
-            power_curve = await client.get_power_curves(oldest=oldest)
+            power_curve = await client.get_power_curves(
+                oldest=oldest, activity_type=activity_type
+            )
 
             if not power_curve.data or len(power_curve.data) == 0:
                 return ResponseBuilder.build_response(
@@ -178,6 +184,7 @@ async def get_power_curves(
 
             result_data: dict[str, Any] = {
                 "period": period_label,
+                "activity_type": activity_type,
                 "peak_efforts": peak_efforts,
                 "summary": summary,
             }
