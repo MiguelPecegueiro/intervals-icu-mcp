@@ -1,3 +1,6 @@
+> **Fork of [eddmann/intervals-icu-mcp](https://github.com/eddmann/intervals-icu-mcp)**  
+> Patched for async compatibility with FastMCP 3.3.1 — `get_state`/`set_state` now properly awaited, `.env` path resolution fixed for Claude Desktop on Windows.
+
 # Intervals.icu MCP Server
 
 ![Intervals.icu MCP Server](docs/heading.png)
