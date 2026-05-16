@@ -246,12 +246,74 @@ class DataCurvePt(BaseModel):
     date: str | None = None  # Date of the effort
 
 
+class DataCurve(BaseModel):
+    """Curve payload from Intervals.icu (parallel secs/values arrays)."""
+
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
+
+    id: str | None = None
+    label: str | None = None
+    filter_label: str | None = None
+    start_date_local: str | None = None
+    end_date_local: str | None = None
+    secs: list[int] = Field(default_factory=list)
+    values: list[int] = Field(default_factory=list)
+    activity_id: list[str] = Field(default_factory=list)
+
+
+class DataCurveSet(BaseModel):
+    """Response wrapper from athlete power/hr/pace-curves endpoints."""
+
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
+
+    curves: list[DataCurve] = Field(default_factory=list, alias="list")
+
+
+def data_curve_to_power_points(curve: DataCurve) -> list[DataCurvePt]:
+    """Convert API curve arrays to tool-friendly power curve points."""
+    points: list[DataCurvePt] = []
+    for index, duration_secs in enumerate(curve.secs):
+        watts = curve.values[index] if index < len(curve.values) else None
+        activity_id = curve.activity_id[index] if index < len(curve.activity_id) else None
+        points.append(
+            DataCurvePt(secs=duration_secs, watts=watts, src_activity_id=activity_id)
+        )
+    return points
+
+
+def data_curve_to_hr_points(curve: DataCurve) -> list[DataCurvePt]:
+    """Convert API curve arrays to tool-friendly HR curve points."""
+    points: list[DataCurvePt] = []
+    for index, duration_secs in enumerate(curve.secs):
+        bpm = curve.values[index] if index < len(curve.values) else None
+        activity_id = curve.activity_id[index] if index < len(curve.activity_id) else None
+        points.append(DataCurvePt(secs=duration_secs, bpm=bpm, src_activity_id=activity_id))
+    return points
+
+
+def data_curve_to_pace_points(curve: DataCurve) -> list[DataCurvePt]:
+    """Convert API curve arrays to tool-friendly pace curve points."""
+    points: list[DataCurvePt] = []
+    for index, duration_secs in enumerate(curve.secs):
+        pace_min_per_km = None
+        if index < len(curve.values):
+            # API stores pace as seconds per km
+            pace_min_per_km = curve.values[index] / 60.0
+        activity_id = curve.activity_id[index] if index < len(curve.activity_id) else None
+        points.append(
+            DataCurvePt(secs=duration_secs, pace=pace_min_per_km, src_activity_id=activity_id)
+        )
+    return points
+
+
 class PowerCurve(BaseModel):
     """Power curve data for an athlete."""
 
     name: str | None = None
     type: str | None = None
     athlete_id: str | None = None
+    start_date_local: str | None = None
+    end_date_local: str | None = None
     data: list[DataCurvePt] = Field(default_factory=list[DataCurvePt])
 
 
@@ -261,6 +323,8 @@ class HRCurve(BaseModel):
     name: str | None = None
     type: str | None = None
     athlete_id: str | None = None
+    start_date_local: str | None = None
+    end_date_local: str | None = None
     data: list[DataCurvePt] = Field(default_factory=list[DataCurvePt])
 
 
@@ -270,6 +334,8 @@ class PaceCurve(BaseModel):
     name: str | None = None
     type: str | None = None
     athlete_id: str | None = None
+    start_date_local: str | None = None
+    end_date_local: str | None = None
     data: list[DataCurvePt] = Field(default_factory=list[DataCurvePt])
 
 
@@ -419,8 +485,7 @@ class HistogramBin(BaseModel):
 
     min: float  # Minimum value for this bin
     max: float  # Maximum value for this bin
-    count: int  # Number of data points in this bin
-    secs: int | None = None  # Time spent in this bin (seconds)
+    secs: int  # Time spent in this bin (seconds)
 
 
 class Histogram(BaseModel):

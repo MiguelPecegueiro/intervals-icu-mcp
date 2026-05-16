@@ -1,5 +1,6 @@
 """Async HTTP client for Intervals.icu API."""
 
+from datetime import date, datetime
 from typing import Any
 
 import httpx
@@ -13,6 +14,8 @@ from .models import (
     ActivitySummary,
     Athlete,
     BestEfforts,
+    DataCurve,
+    DataCurveSet,
     Event,
     Folder,
     Gear,
@@ -25,6 +28,9 @@ from .models import (
     SportSettings,
     Wellness,
     Workout,
+    data_curve_to_hr_points,
+    data_curve_to_pace_points,
+    data_curve_to_power_points,
 )
 
 
@@ -33,6 +39,26 @@ def _histogram_from_json(data: Any) -> Histogram:
     if isinstance(data, list):
         return Histogram(bins=data)
     return Histogram(**data)
+
+
+def _build_curves_param(oldest: str | None, newest: str | None) -> str:
+    """Build Intervals.icu curves query value from a date range.
+
+    See https://forum.intervals.icu/t/api-get-power-duration-curve-for-custom-period-solved/122959
+    Formats: 1y, 42d, all, r.YYYY-MM-DD.YYYY-MM-DD
+    """
+    if oldest is None:
+        return "all"
+    oldest_date = oldest.split("T")[0]
+    newest_date = (newest or date.today().isoformat()).split("T")[0]
+    return f"r.{oldest_date}.{newest_date}"
+
+
+def _primary_curve(curve_set: DataCurveSet) -> DataCurve | None:
+    """Return the main curve from an API response (first entry)."""
+    if not curve_set.curves:
+        return None
+    return curve_set.curves[0]
 
 
 class ICUAPIError(Exception):
@@ -590,15 +616,27 @@ class ICUClient:
             PowerCurve with best efforts data
         """
         athlete_id = athlete_id or self.config.intervals_icu_athlete_id
-        params: dict[str, str] = {"type": activity_type}
-
-        if oldest:
-            params["oldest"] = oldest
-        if newest:
-            params["newest"] = newest
+        params: dict[str, str] = {
+            "type": activity_type,
+            "curves": _build_curves_param(oldest, newest),
+            "newest": (newest or datetime.now().isoformat(timespec="seconds")),
+            "now": date.today().isoformat(),
+        }
 
         response = await self._request("GET", f"/athlete/{athlete_id}/power-curves", params=params)
-        return PowerCurve(**response.json())
+        curve_set = DataCurveSet(**response.json())
+        curve = _primary_curve(curve_set)
+        if curve is None:
+            return PowerCurve(type=activity_type, athlete_id=athlete_id)
+
+        return PowerCurve(
+            name=curve.label,
+            type=activity_type,
+            athlete_id=athlete_id,
+            start_date_local=curve.start_date_local,
+            end_date_local=curve.end_date_local,
+            data=data_curve_to_power_points(curve),
+        )
 
     async def get_hr_curves(
         self,
@@ -619,15 +657,27 @@ class ICUClient:
             HRCurve with best efforts data
         """
         athlete_id = athlete_id or self.config.intervals_icu_athlete_id
-        params: dict[str, str] = {"type": activity_type}
-
-        if oldest:
-            params["oldest"] = oldest
-        if newest:
-            params["newest"] = newest
+        params: dict[str, str] = {
+            "type": activity_type,
+            "curves": _build_curves_param(oldest, newest),
+            "newest": (newest or datetime.now().isoformat(timespec="seconds")),
+            "now": date.today().isoformat(),
+        }
 
         response = await self._request("GET", f"/athlete/{athlete_id}/hr-curves", params=params)
-        return HRCurve(**response.json())
+        curve_set = DataCurveSet(**response.json())
+        curve = _primary_curve(curve_set)
+        if curve is None:
+            return HRCurve(type=activity_type, athlete_id=athlete_id)
+
+        return HRCurve(
+            name=curve.label,
+            type=activity_type,
+            athlete_id=athlete_id,
+            start_date_local=curve.start_date_local,
+            end_date_local=curve.end_date_local,
+            data=data_curve_to_hr_points(curve),
+        )
 
     async def get_pace_curves(
         self,
@@ -650,17 +700,29 @@ class ICUClient:
             PaceCurve with best efforts data
         """
         athlete_id = athlete_id or self.config.intervals_icu_athlete_id
-        params: dict[str, str] = {"type": activity_type}
-
-        if oldest:
-            params["oldest"] = oldest
-        if newest:
-            params["newest"] = newest
+        params: dict[str, str] = {
+            "type": activity_type,
+            "curves": _build_curves_param(oldest, newest),
+            "newest": (newest or datetime.now().isoformat(timespec="seconds")),
+            "now": date.today().isoformat(),
+        }
         if use_gap:
             params["gap"] = "true"
 
         response = await self._request("GET", f"/athlete/{athlete_id}/pace-curves", params=params)
-        return PaceCurve(**response.json())
+        curve_set = DataCurveSet(**response.json())
+        curve = _primary_curve(curve_set)
+        if curve is None:
+            return PaceCurve(type=activity_type, athlete_id=athlete_id)
+
+        return PaceCurve(
+            name=curve.label,
+            type=activity_type,
+            athlete_id=athlete_id,
+            start_date_local=curve.start_date_local,
+            end_date_local=curve.end_date_local,
+            data=data_curve_to_pace_points(curve),
+        )
 
     # ==================== Workout Library Endpoints ====================
 

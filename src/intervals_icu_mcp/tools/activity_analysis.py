@@ -6,6 +6,7 @@ from fastmcp import Context
 
 from ..auth import ICUConfig
 from ..client import ICUAPIError, ICUClient
+from ..models import Effort
 from ..response_builder import ResponseBuilder
 
 
@@ -215,6 +216,26 @@ async def get_activity_intervals(
         )
 
 
+STANDARD_BEST_EFFORT_DURATIONS_SECONDS = [5, 15, 30, 60, 120, 300, 600, 1200, 3600]
+
+
+def _effort_to_dict(effort: Effort, target_duration: int | None = None) -> dict[str, Any]:
+    effort_item: dict[str, Any] = {}
+    if target_duration is not None:
+        effort_item["target_duration_seconds"] = target_duration
+    if effort.average is not None:
+        effort_item["average"] = effort.average
+    if effort.duration is not None:
+        effort_item["duration_seconds"] = effort.duration
+    if effort.distance is not None:
+        effort_item["distance_meters"] = effort.distance
+    if effort.start_index is not None:
+        effort_item["start_index"] = effort.start_index
+    if effort.end_index is not None:
+        effort_item["end_index"] = effort.end_index
+    return effort_item
+
+
 async def get_best_efforts(
     activity_id: Annotated[str, "Activity ID to analyze"],
     stream: Annotated[
@@ -222,20 +243,21 @@ async def get_best_efforts(
     ] = "watts",
     duration: Annotated[int | None, "Duration of each effort in seconds"] = None,
     distance: Annotated[float | None, "Distance of each effort in meters"] = None,
-    count: Annotated[int, "Number of efforts to return"] = 8,
+    count: Annotated[int, "Number of efforts to return per duration/distance"] = 8,
     ctx: Context | None = None,
 ) -> str:
     """Get best efforts/peak performances from an activity.
 
-    Finds the best performances for a given stream and optional duration or distance.
-    Use stream "watts" for power, "heartrate" for HR, or "pace" for running pace.
+    Finds the best performances for a given stream. When duration and distance are
+    omitted, queries standard durations (5s through 1h). Use stream "watts" for power,
+    "heartrate" for HR, or "pace" for running pace.
 
     Args:
         activity_id: The unique ID of the activity
         stream: Stream to search (watts, heartrate, pace, etc.)
-        duration: Duration of each effort in seconds
+        duration: Duration of each effort in seconds (API requires duration or distance)
         distance: Distance of each effort in meters
-        count: Number of efforts to return (default 8)
+        count: Number of efforts to return per query (default 8)
 
     Returns:
         JSON string with best efforts data
@@ -245,15 +267,29 @@ async def get_best_efforts(
 
     try:
         async with ICUClient(config) as client:
-            best_efforts = await client.get_best_efforts(
-                activity_id,
-                stream=stream,
-                duration=duration,
-                distance=distance,
-                count=count,
-            )
+            efforts_data: list[dict[str, Any]] = []
 
-            if not best_efforts.efforts:
+            if duration is not None or distance is not None:
+                best_efforts = await client.get_best_efforts(
+                    activity_id,
+                    stream=stream,
+                    duration=duration,
+                    distance=distance,
+                    count=count,
+                )
+                efforts_data = [_effort_to_dict(effort) for effort in best_efforts.efforts]
+            else:
+                for effort_duration in STANDARD_BEST_EFFORT_DURATIONS_SECONDS:
+                    best_efforts = await client.get_best_efforts(
+                        activity_id,
+                        stream=stream,
+                        duration=effort_duration,
+                        count=1,
+                    )
+                    for effort in best_efforts.efforts:
+                        efforts_data.append(_effort_to_dict(effort, effort_duration))
+
+            if not efforts_data:
                 return ResponseBuilder.build_response(
                     data={
                         "best_efforts": [],
@@ -263,22 +299,6 @@ async def get_best_efforts(
                     },
                     metadata={"message": "No best efforts found for this activity"},
                 )
-
-            efforts_data: list[dict[str, Any]] = []
-            for effort in best_efforts.efforts:
-                effort_item: dict[str, Any] = {}
-                if effort.average is not None:
-                    effort_item["average"] = effort.average
-                if effort.duration is not None:
-                    effort_item["duration_seconds"] = effort.duration
-                if effort.distance is not None:
-                    effort_item["distance_meters"] = effort.distance
-                if effort.start_index is not None:
-                    effort_item["start_index"] = effort.start_index
-                if effort.end_index is not None:
-                    effort_item["end_index"] = effort.end_index
-
-                efforts_data.append(effort_item)
 
             result_data = {
                 "activity_id": activity_id,
@@ -404,19 +424,23 @@ async def get_power_histogram(
 
             bins_data: list[dict[str, Any]] = []
             for bin_item in histogram.bins:
-                bin_data: dict[str, Any] = {
-                    "power_range": {"min_watts": int(bin_item.min), "max_watts": int(bin_item.max)},
-                    "count": bin_item.count,
-                }
-                if bin_item.secs is not None:
-                    bin_data["time_seconds"] = bin_item.secs
-                bins_data.append(bin_data)
+                bins_data.append(
+                    {
+                        "power_range": {
+                            "min_watts": int(bin_item.min),
+                            "max_watts": int(bin_item.max),
+                        },
+                        "time_seconds": bin_item.secs,
+                    }
+                )
 
-            result_data = {
+            result_data: dict[str, Any] = {
                 "activity_id": activity_id,
                 "bins": bins_data,
-                "total_samples": histogram.total_count,
+                "total_time_seconds": sum(b.secs for b in histogram.bins),
             }
+            if histogram.total_count is not None:
+                result_data["total_samples"] = histogram.total_count
             if histogram.total_secs is not None:
                 result_data["total_time_seconds"] = histogram.total_secs
 
@@ -464,19 +488,20 @@ async def get_hr_histogram(
 
             bins_data: list[dict[str, Any]] = []
             for bin_item in histogram.bins:
-                bin_data: dict[str, Any] = {
-                    "hr_range": {"min_bpm": int(bin_item.min), "max_bpm": int(bin_item.max)},
-                    "count": bin_item.count,
-                }
-                if bin_item.secs is not None:
-                    bin_data["time_seconds"] = bin_item.secs
-                bins_data.append(bin_data)
+                bins_data.append(
+                    {
+                        "hr_range": {"min_bpm": int(bin_item.min), "max_bpm": int(bin_item.max)},
+                        "time_seconds": bin_item.secs,
+                    }
+                )
 
             result_data = {
                 "activity_id": activity_id,
                 "bins": bins_data,
-                "total_samples": histogram.total_count,
+                "total_time_seconds": sum(b.secs for b in histogram.bins),
             }
+            if histogram.total_count is not None:
+                result_data["total_samples"] = histogram.total_count
             if histogram.total_secs is not None:
                 result_data["total_time_seconds"] = histogram.total_secs
 
@@ -530,24 +555,25 @@ async def get_pace_histogram(
                 max_minutes = int(bin_item.max)
                 max_seconds = int((bin_item.max - max_minutes) * 60)
 
-                bin_data: dict[str, Any] = {
-                    "pace_range": {
-                        "min_pace_min_per_km": bin_item.min,
-                        "max_pace_min_per_km": bin_item.max,
-                        "min_pace_formatted": f"{min_minutes}:{min_seconds:02d} /km",
-                        "max_pace_formatted": f"{max_minutes}:{max_seconds:02d} /km",
-                    },
-                    "count": bin_item.count,
-                }
-                if bin_item.secs is not None:
-                    bin_data["time_seconds"] = bin_item.secs
-                bins_data.append(bin_data)
+                bins_data.append(
+                    {
+                        "pace_range": {
+                            "min_pace_min_per_km": bin_item.min,
+                            "max_pace_min_per_km": bin_item.max,
+                            "min_pace_formatted": f"{min_minutes}:{min_seconds:02d} /km",
+                            "max_pace_formatted": f"{max_minutes}:{max_seconds:02d} /km",
+                        },
+                        "time_seconds": bin_item.secs,
+                    }
+                )
 
             result_data = {
                 "activity_id": activity_id,
                 "bins": bins_data,
-                "total_samples": histogram.total_count,
+                "total_time_seconds": sum(b.secs for b in histogram.bins),
             }
+            if histogram.total_count is not None:
+                result_data["total_samples"] = histogram.total_count
             if histogram.total_secs is not None:
                 result_data["total_time_seconds"] = histogram.total_secs
 
@@ -601,25 +627,26 @@ async def get_gap_histogram(
                 max_minutes = int(bin_item.max)
                 max_seconds = int((bin_item.max - max_minutes) * 60)
 
-                bin_data: dict[str, Any] = {
-                    "gap_range": {
-                        "min_gap_min_per_km": bin_item.min,
-                        "max_gap_min_per_km": bin_item.max,
-                        "min_gap_formatted": f"{min_minutes}:{min_seconds:02d} /km",
-                        "max_gap_formatted": f"{max_minutes}:{max_seconds:02d} /km",
-                    },
-                    "count": bin_item.count,
-                }
-                if bin_item.secs is not None:
-                    bin_data["time_seconds"] = bin_item.secs
-                bins_data.append(bin_data)
+                bins_data.append(
+                    {
+                        "gap_range": {
+                            "min_gap_min_per_km": bin_item.min,
+                            "max_gap_min_per_km": bin_item.max,
+                            "min_gap_formatted": f"{min_minutes}:{min_seconds:02d} /km",
+                            "max_gap_formatted": f"{max_minutes}:{max_seconds:02d} /km",
+                        },
+                        "time_seconds": bin_item.secs,
+                    }
+                )
 
             result_data = {
                 "activity_id": activity_id,
                 "bins": bins_data,
-                "total_samples": histogram.total_count,
+                "total_time_seconds": sum(b.secs for b in histogram.bins),
                 "note": "GAP (Grade Adjusted Pace) normalizes pace for elevation changes",
             }
+            if histogram.total_count is not None:
+                result_data["total_samples"] = histogram.total_count
             if histogram.total_secs is not None:
                 result_data["total_time_seconds"] = histogram.total_secs
 
